@@ -19,22 +19,22 @@ from utils import *
 from torch.utils.data import DataLoader
 import gc
 # from apex import amp
-import cv2
+# import cv2
 
 cudnn.benchmark = True
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 parser = argparse.ArgumentParser(description='Attention Concatenation Volume for Accurate and Efficient Stereo Matching (ACVNet)')
 parser.add_argument('--model', default='acvnet', help='select a model structure', choices=__models__.keys())
 parser.add_argument('--maxdisp', type=int, default=192, help='maximum disparity')
 parser.add_argument('--dataset', default='kitti', help='dataset name', choices=__datasets__.keys())
-parser.add_argument('--kitti15_datapath', default='/home/xgw/data/KITTI_2015/', help='data path')
-parser.add_argument('--kitti12_datapath', default='/home/xgw/data/KITTI_2012/', help='data path')
+parser.add_argument('--kitti15_datapath', default='/home/custom_users/mayihang/dataset/KITTI_2015/', help='data path')
+parser.add_argument('--kitti12_datapath', default='/home/custom_users/mayihang/dataset/KITTI_2012/', help='data path')
 parser.add_argument('--trainlist', default='./filenames/kitti12_15_all.txt', help='training list')
 parser.add_argument('--testlist',default='./filenames/kitti15_val.txt', help='testing list')
 parser.add_argument('--lr', type=float, default=0.001, help='base learning rate')
-parser.add_argument('--batch_size', type=int, default=16, help='training batch size')
-parser.add_argument('--test_batch_size', type=int, default=8, help='testing batch size')
+parser.add_argument('--batch_size', type=int, default=4, help='training batch size')
+parser.add_argument('--test_batch_size', type=int, default=4, help='testing batch size')
 parser.add_argument('--epochs', type=int, default=600, help='number of epochs to train')
 parser.add_argument('--lrepochs',default="400:10", type=str,  help='the epochs to decay lr: the downscale rate')
 parser.add_argument('--logdir',default='./checkpoints/', help='the directory to save logs and checkpoints')
@@ -58,8 +58,8 @@ logger = SummaryWriter(args.logdir)
 StereoDataset = __datasets__[args.dataset]
 train_dataset = StereoDataset(args.kitti15_datapath, args.kitti12_datapath, args.trainlist, True)
 test_dataset = StereoDataset(args.kitti15_datapath, args.kitti12_datapath, args.testlist, False)
-TrainImgLoader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=16, drop_last=True)
-TestImgLoader = DataLoader(test_dataset, args.test_batch_size, shuffle=False, num_workers=16, drop_last=False)
+TrainImgLoader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=0, drop_last=True)
+TestImgLoader = DataLoader(test_dataset, args.test_batch_size, shuffle=False, num_workers=0, drop_last=False)
 
 # model, optimizer
 model = __models__[args.model](args.maxdisp, False, False)
