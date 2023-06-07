@@ -175,19 +175,21 @@ class ACVNet(nn.Module):
 
         else:
 
-            features_left = self.feature_extraction(left)
-            features_right = self.feature_extraction(right)
+            features_left = self.feature_extraction(left) # torch.Size([4, 320, 64, 128])
+            features_right = self.feature_extraction(right) # torch.Size([4, 320, 64, 128])
             gwc_volume = build_gwc_volume(features_left["gwc_feature"], features_right["gwc_feature"], self.maxdisp // 4, self.num_groups)
-            gwc_volume = self.patch(gwc_volume)
-            patch_l1 = self.patch_l1(gwc_volume[:, :8])
-            patch_l2 = self.patch_l2(gwc_volume[:, 8:24])
-            patch_l3 = self.patch_l3(gwc_volume[:, 24:40])
-            patch_volume = torch.cat((patch_l1,patch_l2,patch_l3), dim=1)
-            cost_attention = self.dres1_att_(patch_volume)
-            cost_attention = self.dres2_att_(cost_attention)
-            att_weights = self.classif_att_(cost_attention)
+            gwc_volume = self.patch(gwc_volume) # Note 1 siyuan://blocks/20230605160500-gq65fis 维度不变 还是torch.Size([4, 40, 48, 64, 128])  [B, num_groups, maxdisp, H, W]
+            # dilation分别为1、2、3对应论文中的膨胀率
+            patch_l1 = self.patch_l1(gwc_volume[:, :8]) # torch.Size([4, 8, 48, 64, 128])
+            patch_l2 = self.patch_l2(gwc_volume[:, 8:24]) # torch.Size([4, 16, 48, 64, 128])
+            patch_l3 = self.patch_l3(gwc_volume[:, 24:40]) #　torch.Size([4, 16, 48, 64, 128])
+            patch_volume = torch.cat((patch_l1,patch_l2,patch_l3), dim=1) # torch.Size([4, 40, 48, 64, 128])
 
-        if not self.attn_weights_only:
+            cost_attention = self.dres1_att_(patch_volume) # torch.Size([4, 32, 48, 64, 128])
+            cost_attention = self.dres2_att_(cost_attention) # torch.Size([4, 32, 48, 64, 128])
+            att_weights = self.classif_att_(cost_attention) # torch.Size([4, 1, 48, 64, 128])
+
+        if not self.attn_weights_only: # True
             concat_feature_left = self.concatconv(features_left["gwc_feature"])
             concat_feature_right = self.concatconv(features_right["gwc_feature"])  
             concat_volume = build_concat_volume(concat_feature_left, concat_feature_right, self.maxdisp // 4)

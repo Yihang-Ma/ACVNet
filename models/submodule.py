@@ -205,11 +205,16 @@ def build_gwc_volume_cos(refimg_fea, targetimg_fea, maxdisp, num_groups):
     volume = volume.contiguous()
     return volume
 
-
+'''
+点乘计算计算两个特征图fea1 和 fea2之间的逐组相关性
+'''
 def groupwise_correlation(fea1, fea2, num_groups):
     B, C, H, W = fea1.shape
-    assert C % num_groups == 0
-    channels_per_group = C // num_groups
+    assert C % num_groups == 0 # 确保通道数可以被组数(40)整除
+    channels_per_group = C // num_groups # 计算每个组中的通道数(8)
+    # 计算fea1和fea2的逐元素乘积: shape=torch.Size([4, 320, 64, 128])
+    # view成具有分组通道结构的张量: shape=torch.Size([4, 40, 8, 64, 128])
+    # 沿着每组内通道维度求均值: shape=torch.Size([4, 40, 64, 128])
     cost = (fea1 * fea2).view([B, num_groups, channels_per_group, H, W]).mean(dim=2)
     assert cost.shape == (B, num_groups, H, W)
     return cost
@@ -224,18 +229,23 @@ def groupwise_correlation_norm(fea1, fea2, num_groups):
     assert cost.shape == (B, num_groups, H, W)
     return cost
 
-
+'''
+构建一个基于组相关性的cost volume
+'''
 def build_gwc_volume(refimg_fea, targetimg_fea, maxdisp, num_groups):
     B, C, H, W = refimg_fea.shape
-    volume = refimg_fea.new_zeros([B, num_groups, maxdisp, H, W])
+    # 创建一个全零张量用于存储不同视差下的成本卷积 
+    # new_zeros方法用于创建一个与调用对象具有相同数据类型、设备和布局属性的新张量
+    volume = refimg_fea.new_zeros([B, num_groups, maxdisp, H, W]) 
     for i in range(maxdisp):
+        # 计算具有当前视差的参考图像特征和目标图像特征之间的成本卷积，并将其存储在相应的视差位置
         if i > 0:
             volume[:, :, i, :, i:] = groupwise_correlation(refimg_fea[:, :, :, i:], targetimg_fea[:, :, :, :-i],
                                                            num_groups)
         else:
             volume[:, :, i, :, :] = groupwise_correlation(refimg_fea, targetimg_fea, num_groups)
-    volume = volume.contiguous()
-    return volume
+    volume = volume.contiguous() # 确保卷积张量在内存中是连续的
+    return volume 
 
 def build_gwc_volume_norm(refimg_fea, targetimg_fea, maxdisp, num_groups):
     B, C, H, W = refimg_fea.shape
