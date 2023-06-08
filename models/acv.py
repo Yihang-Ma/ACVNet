@@ -190,12 +190,15 @@ class ACVNet(nn.Module):
             att_weights = self.classif_att_(cost_attention) # torch.Size([4, 1, 48, 64, 128])
 
         if not self.attn_weights_only: # True
-            concat_feature_left = self.concatconv(features_left["gwc_feature"])
-            concat_feature_right = self.concatconv(features_right["gwc_feature"])  
-            concat_volume = build_concat_volume(concat_feature_left, concat_feature_right, self.maxdisp // 4)
-            ac_volume = F.softmax(att_weights, dim=2) * concat_volume   ### ac_volume = att_weights * concat_volume 
-            cost0 = self.dres0(ac_volume)
-            cost0 = self.dres1(cost0) + cost0
+            # 用两个卷积将320通道特征图压缩为32通道特征图，以构建初始连接体（concat volume）
+            concat_feature_left = self.concatconv(features_left["gwc_feature"]) # torch.Size([4, 32, 64, 128])
+            concat_feature_right = self.concatconv(features_right["gwc_feature"])  # torch.Size([4, 32, 64, 128])
+            concat_volume = build_concat_volume(concat_feature_left, concat_feature_right, self.maxdisp // 4) # torch.Size([4, 64, 48, 64, 128])
+            # Attention filtering 使用注意力权重过滤初始连接体以产生所有视差的4D代价体
+            ac_volume = F.softmax(att_weights, dim=2) * concat_volume   # ac_volume = att_weights * concat_volume 
+            # Cost Aggregation
+            cost0 = self.dres0(ac_volume) # 2个3D卷积
+            cost0 = self.dres1(cost0) + cost0 # 2个3D卷积
             out1 = self.dres2(cost0)
             out2 = self.dres3(out1)
 

@@ -22,7 +22,7 @@ import gc
 # import cv2
 
 cudnn.benchmark = True
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '7'
 
 parser = argparse.ArgumentParser(description='Attention Concatenation Volume for Accurate and Efficient Stereo Matching (ACVNet)')
 parser.add_argument('--model', default='acvnet', help='select a model structure', choices=__models__.keys())

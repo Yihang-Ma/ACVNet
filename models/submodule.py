@@ -179,15 +179,16 @@ def disparity_regression(x, maxdisp):
 
 def build_concat_volume(refimg_fea, targetimg_fea, maxdisp):
     B, C, H, W = refimg_fea.shape
+    # 初始化一个5D张量，新的张量有双倍的通道数，以存储参考图像和目标图像的串联特征
     volume = refimg_fea.new_zeros([B, 2 * C, maxdisp, H, W])
     for i in range(maxdisp):
         if i > 0:
-            volume[:, :C, i, :, :] = refimg_fea[:, :, :, :]
-            volume[:, C:, i, :, i:] = targetimg_fea[:, :, :, :-i]
+            volume[:, :C, i, :, :] = refimg_fea[:, :, :, :] # 将参考图像的特征复制到视差i对应的volume的前C个通道 （其实多维的想想就是3维的复制体，横向复制，纵向复制等）
+            volume[:, C:, i, :, i:] = targetimg_fea[:, :, :, :-i] # 将视差（水平移动）为i像素的目标图像特征复制到 视差值对应为i的volume的最后C通道中
         else:
-            volume[:, :C, i, :, :] = refimg_fea
-            volume[:, C:, i, :, :] = targetimg_fea
-    volume = volume.contiguous()
+            volume[:, :C, i, :, :] = refimg_fea #　将参考图像特征复制到连接体的前C个通道
+            volume[:, C:, i, :, :] = targetimg_fea # 将目标图像特征复制到连接体的后C个通道
+    volume = volume.contiguous() # 使体积张量在内存中连续
     return volume
 
 
