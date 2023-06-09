@@ -81,13 +81,13 @@ class hourglass(nn.Module):
         self.redir2 = convbn_3d(in_channels * 2, in_channels * 2, kernel_size=1, stride=1, pad=0)
 
     def forward(self, x):
-        conv1 = self.conv1(x)
-        conv2 = self.conv2(conv1)
-        conv3 = self.conv3(conv2)
-        conv4 = self.conv4(conv3)
-        conv4 = self.attention_block(conv4)
-        conv5 = F.relu(self.conv5(conv4) + self.redir2(conv2), inplace=True)
-        conv6 = F.relu(self.conv6(conv5) + self.redir1(x), inplace=True)
+        conv1 = self.conv1(x) # torch.Size([4, 32, 48, 64, 128]) -> torch.Size([4, 64, 24, 32, 64])
+        conv2 = self.conv2(conv1) # torch.Size([4, 64, 24, 32, 64])
+        conv3 = self.conv3(conv2) # torch.Size([4, 128, 12, 16, 32])
+        conv4 = self.conv4(conv3) # torch.Size([4, 128, 12, 16, 32])
+        conv4 = self.attention_block(conv4) # torch.Size([4, 128, 12, 16, 32])
+        conv5 = F.relu(self.conv5(conv4) + self.redir2(conv2), inplace=True) # torch.Size([4, 64, 24, 32, 64])
+        conv6 = F.relu(self.conv6(conv5) + self.redir1(x), inplace=True) # torch.Size([4, 32, 48, 64, 128])
         return conv6
 
 class ACVNet(nn.Module):
@@ -178,7 +178,8 @@ class ACVNet(nn.Module):
             features_left = self.feature_extraction(left) # torch.Size([4, 320, 64, 128])
             features_right = self.feature_extraction(right) # torch.Size([4, 320, 64, 128])
             gwc_volume = build_gwc_volume(features_left["gwc_feature"], features_right["gwc_feature"], self.maxdisp // 4, self.num_groups)
-            gwc_volume = self.patch(gwc_volume) # Note 1 siyuan://blocks/20230605160500-gq65fis 维度不变 还是torch.Size([4, 40, 48, 64, 128])  [B, num_groups, maxdisp, H, W]
+            # Note 1 siyuan://blocks/20230605160500-gq65fis 维度不变 还是torch.Size([4, 40, 48, 64, 128])  [B, num_groups, maxdisp, H, W]
+            gwc_volume = self.patch(gwc_volume) 
             # dilation分别为1、2、3对应论文中的膨胀率
             patch_l1 = self.patch_l1(gwc_volume[:, :8]) # torch.Size([4, 8, 48, 64, 128])
             patch_l2 = self.patch_l2(gwc_volume[:, 8:24]) # torch.Size([4, 16, 48, 64, 128])
@@ -194,47 +195,49 @@ class ACVNet(nn.Module):
             concat_feature_left = self.concatconv(features_left["gwc_feature"]) # torch.Size([4, 32, 64, 128])
             concat_feature_right = self.concatconv(features_right["gwc_feature"])  # torch.Size([4, 32, 64, 128])
             concat_volume = build_concat_volume(concat_feature_left, concat_feature_right, self.maxdisp // 4) # torch.Size([4, 64, 48, 64, 128])
+            
             # Attention filtering 使用注意力权重过滤初始连接体以产生所有视差的4D代价体
-            ac_volume = F.softmax(att_weights, dim=2) * concat_volume   # ac_volume = att_weights * concat_volume 
+            ac_volume = F.softmax(att_weights, dim=2) * concat_volume   # ac_volume = att_weights * concat_volume  torch.Size([4, 64, 48, 64, 128])
+            
             # Cost Aggregation
-            cost0 = self.dres0(ac_volume) # 2个3D卷积
-            cost0 = self.dres1(cost0) + cost0 # 2个3D卷积
-            out1 = self.dres2(cost0)
-            out2 = self.dres3(out1)
+            cost0 = self.dres0(ac_volume) # 2个3D卷积 torch.Size([4, 32, 48, 64, 128])
+            cost0 = self.dres1(cost0) + cost0 # 2个3D卷积 torch.Size([4, 32, 48, 64, 128])
+            out1 = self.dres2(cost0) # hourglass结构 torch.Size([4, 32, 48, 64, 128])
+            out2 = self.dres3(out1) # hourglass结构 torch.Size([4, 32, 48, 64, 128])
 
         if self.training:
 
-            if not self.freeze_attn_weights:
-
+            if not self.freeze_attn_weights: # True
+                # att_weights:[4, 1, 48, 64, 128] -> cost_attention:[4, 1, 192, 256, 512]
                 cost_attention = F.upsample(att_weights, [self.maxdisp, left.size()[2], left.size()[3]], mode='trilinear')
-                cost_attention = torch.squeeze(cost_attention, 1)
-                pred_attention = F.softmax(cost_attention, dim=1)
-                pred_attention = disparity_regression(pred_attention, self.maxdisp)
+                cost_attention = torch.squeeze(cost_attention, 1) # torch.Size([4, 192, 256, 512])
+                pred_attention = F.softmax(cost_attention, dim=1) # torch.Size([4, 192, 256, 512])
+                pred_attention = disparity_regression(pred_attention, self.maxdisp) # torch.Size([4, 256, 512])
 
-            if not self.attn_weights_only:
+            if not self.attn_weights_only: # True
 
-                cost0 = self.classif0(cost0)
-                cost1 = self.classif1(out1)
-                cost2 = self.classif2(out2)    
-
+                cost0 = self.classif0(cost0) # torch.Size([4, 1, 48, 64, 128])
+                cost1 = self.classif1(out1) # torch.Size([4, 1, 48, 64, 128])
+                cost2 = self.classif2(out2) # torch.Size([4, 1, 48, 64, 128])
+                # disparity_regression 对应论文中的output0
                 cost0 = F.upsample(cost0, [self.maxdisp, left.size()[2], left.size()[3]], mode='trilinear')
                 cost0 = torch.squeeze(cost0, 1)
                 pred0 = F.softmax(cost0, dim=1)
                 pred0 = disparity_regression(pred0, self.maxdisp)    
-
+                # 对应论文中的output1
                 cost1 = F.upsample(cost1, [self.maxdisp, left.size()[2], left.size()[3]], mode='trilinear')
                 cost1 = torch.squeeze(cost1, 1)
                 pred1 = F.softmax(cost1, dim=1)
                 pred1 = disparity_regression(pred1, self.maxdisp)    
-
+                # 对应论文中的output2
                 cost2 = F.upsample(cost2, [self.maxdisp, left.size()[2], left.size()[3]], mode='trilinear')
                 cost2 = torch.squeeze(cost2, 1)
                 pred2 = F.softmax(cost2, dim=1)
                 pred2 = disparity_regression(pred2, self.maxdisp)
 
-                if self.freeze_attn_weights:
+                if self.freeze_attn_weights: # False
                     return [pred0, pred1, pred2]
-                return [pred_attention, pred0, pred1, pred2]
+                return [pred_attention, pred0, pred1, pred2] # 如果self.training,返回4个pred
             return [pred_attention]
 
         else:
