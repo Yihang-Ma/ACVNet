@@ -237,7 +237,7 @@ class ACVNet(nn.Module):
 
                 if self.freeze_attn_weights: # False
                     return [pred0, pred1, pred2]
-                return [pred_attention, pred0, pred1, pred2] # 如果self.training,返回4个pred
+                return [pred_attention, pred0, pred1, pred2] # 如果self.training,返回4个pred 维度均是torch.Size([4, 256, 512])
             return [pred_attention]
 
         else:
